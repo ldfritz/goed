@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	version     = "0.1.3"
+	version     = "0.2.1"
 	versionFlag = flag.Bool("version", false, "Display version and exit.")
 	build       = flag.Bool("build", false, "Build script.")
 	install     = flag.Bool("install", false, "Install script.")
@@ -20,7 +20,6 @@ func executeCommand(cmd *exec.Cmd) {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Run()
-	pausePrompt()
 }
 
 func pausePrompt() {
@@ -31,6 +30,7 @@ func pausePrompt() {
 		fmt.Println(err)
 	}
 }
+
 func main() {
 	flag.Parse()
 	if *versionFlag {
@@ -40,24 +40,33 @@ func main() {
 
 	filename := flag.Arg(0)
 
-	cmds := []*exec.Cmd{
-		exec.Command("gofmt", "-w", filename),
-		exec.Command("editor", filename),
-		exec.Command("gofmt", "-w", filename),
-		exec.Command("golint", filename),
-		exec.Command("go", "vet", filename),
+	cmds := []struct {
+		label   string
+		command *exec.Cmd
+		pause   bool
+	}{
+		{"### FORMAT ###################", exec.Command("gofmt", "-w", filename), true},
+		{"### EDIT   ###################", exec.Command("editor", filename), false},
+		{"### FORMAT ###################", exec.Command("gofmt", "-w", filename), false},
+		{"### LINT   ###################", exec.Command("golint", filename), false},
+		{"### VET    ###################", exec.Command("go", "vet", filename), false},
 	}
 
 	for _, cmd := range cmds {
-		executeCommand(cmd)
+
+		fmt.Println(cmd.label)
+		executeCommand(cmd.command)
+		if cmd.pause {
+			pausePrompt()
+		}
 	}
 
 	switch {
 	case *build:
-		fmt.Println("building...")
+		fmt.Println("### BUILD ####################")
 		executeCommand(exec.Command("go", "build", filename))
 	case *install:
-		fmt.Println("installing...")
+		fmt.Println("### INSTALL ##################")
 		executeCommand(exec.Command("go", "install", filename))
 	}
 }
