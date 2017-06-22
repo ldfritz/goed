@@ -2,32 +2,56 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 )
 
 var (
-	version     = "0.2.1"
+	version     = "0.3.0"
 	versionFlag = flag.Bool("version", false, "Display version and exit.")
 	build       = flag.Bool("build", false, "Build script.")
 	install     = flag.Bool("install", false, "Install script.")
 )
 
-func executeCommand(cmd *exec.Cmd) {
+func runInteractively(cmd *exec.Cmd) {
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.Run()
+	err := cmd.Run()
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
-func pausePrompt() {
+func enterToContinue(msg string) {
 	r := bufio.NewReader(os.Stdin)
-	fmt.Print("Press enter to continue...")
+	fmt.Print(msg)
 	_, err := r.ReadString('\n')
 	if err != nil {
 		fmt.Println(err)
+	}
+}
+
+func runQuietly(cmd *exec.Cmd) {
+	var cmdout bytes.Buffer
+	var cmderr bytes.Buffer
+	cmd.Stdout = &cmdout
+	cmd.Stderr = &cmderr
+	err := cmd.Run()
+	if err != nil {
+		log.Print(err)
+	}
+	if cmdout.String() != "" {
+		fmt.Print(cmdout.String())
+		enterToContinue("Press enter to continue...")
+	}
+	if cmderr.String() != "" {
+		fmt.Print(cmderr.String())
+		enterToContinue("Errors returned. Press enter to continue...")
 	}
 }
 
@@ -40,33 +64,16 @@ func main() {
 
 	filename := flag.Arg(0)
 
-	cmds := []struct {
-		label   string
-		command *exec.Cmd
-		pause   bool
-	}{
-		{"### FORMAT ###################", exec.Command("gofmt", "-w", filename), true},
-		{"### EDIT   ###################", exec.Command("editor", filename), false},
-		{"### FORMAT ###################", exec.Command("gofmt", "-w", filename), false},
-		{"### LINT   ###################", exec.Command("golint", filename), false},
-		{"### VET    ###################", exec.Command("go", "vet", filename), false},
-	}
-
-	for _, cmd := range cmds {
-
-		fmt.Println(cmd.label)
-		executeCommand(cmd.command)
-		if cmd.pause {
-			pausePrompt()
-		}
-	}
+	runQuietly(exec.Command("gofmt", "-w", filename))
+	runInteractively(exec.Command("editor", filename))
+	runQuietly(exec.Command("gofmt", "-w", filename))
+	runQuietly(exec.Command("golint", filename))
+	runQuietly(exec.Command("go", "vet", filename))
 
 	switch {
 	case *build:
-		fmt.Println("### BUILD ####################")
-		executeCommand(exec.Command("go", "build", filename))
+		runQuietly(exec.Command("go", "build", filename))
 	case *install:
-		fmt.Println("### INSTALL ##################")
-		executeCommand(exec.Command("go", "install", filename))
+		runQuietly(exec.Command("go", "install", filename))
 	}
 }
